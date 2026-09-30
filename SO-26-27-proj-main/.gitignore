@@ -1,11 +1,11 @@
-# Object files
-*.o
+# Arquivos de metadados do Windows/WSL
+*:Zone.Identifier
 
-# Input/output files
-*.in
+# Arquivos compilados do C
+*.o
 *.out
+*.exe
 
-# Executable 
-cloudIST*:Zone.Identifier
+# Pastas de build ou temporárias
 build/
-*.o
+.vscode/
