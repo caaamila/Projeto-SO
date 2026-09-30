@@ -6,4 +6,6 @@
 *.out
 
 # Executable 
-cloudIST
+cloudIST*:Zone.Identifier
+build/
+*.o
