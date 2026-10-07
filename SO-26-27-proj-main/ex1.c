@@ -6,14 +6,34 @@
 #include "constants.h"
 #include <dirent.h>
 
+//o scandir faz malloc ent temos q fazer free
+// o sccandir cria as struct dirent 
+// ele lê a diretoria, aloca memória para cada entrada e entrega no fim
+// o scandir devolve o numero de ficheiros q obedece ao filtro 
+
+//  struct dirent {
+//               ino_t          d_ino;       /* Inode number */
+//               off_t          d_off;       /* Not an offset; see below */
+//               unsigned short d_reclen;    /* Length of this record */
+//               unsigned char  d_type;      /* Type of file; not supported by all filesystem types */
+//               char           d_name[256]; /* Null-terminated filename */
+//  };
+
+static int filtro(const struct dirent *e) {
+    const char *ponto = strrchr(e->d_name, '.');
+    return ponto != NULL && strcmp(ponto, ".conf") == 0;
+}
+
+
 int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
 
 	if (argc != 6) {
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
-    return 1;
-  }
+		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
+		return 1;
+	}
+
 	size_t servers;
 	size_t ram;
 	size_t disk;
