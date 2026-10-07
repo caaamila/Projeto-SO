@@ -1,23 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
-#include <dirent.h>
 
 int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
 
-	if (argc != 6) {
-    fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
+	if (argc != 5) {
+    	fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus>\n", argv[0]);
     return 1;
-  }
+    }
+
 	size_t servers;
 	size_t ram;
 	size_t disk;
 	double cpu;
+
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 			parse_size_t_arg(argv[2], &ram) != 0 ||
 			parse_size_t_arg(argv[3], &disk) != 0 ||
