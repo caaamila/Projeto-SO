@@ -71,13 +71,15 @@ int main(int argc, char **argv){
 
 	struct dirent **lista;
 	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro
-
-	printf("%d", n);
+	if (n == -1) {
+		perror("scandir");
+		return 1;
+	}
 	
 	for(int i=0; i<n; i++){
 
 		//construir caminho para o open
-		//juntar input_dir + "/" + lista[i]->d_name;
+
 		char caminho[MAX_PATH_SIZE+ 1 + 256];
 		snprintf(caminho, sizeof(caminho), "%s/%s", dir, lista[i]->d_name);
 		//dir agora contem o caminho
@@ -88,7 +90,9 @@ int main(int argc, char **argv){
 			return EXIT_FAILURE;
 		}
 
-		while(1){
+		int fim=0; //0 false ou seja nao acabou
+
+		while(!fim){
 			switch (get_next_command(fd)){
 				case CMD_DEFINE: {
 					VMType vmtype;
@@ -185,12 +189,16 @@ int main(int argc, char **argv){
 					break;
 
 				case EOC:
-					datacenter_destroy(&dc);
-					return 0;
+					fim=1;
+					break;
 			}
 		}
 
 		close(fd);
-	}
 
+		free(lista[i]);
+	}
+	
+	datacenter_destroy(&dc);
+	free(lista);
 }
