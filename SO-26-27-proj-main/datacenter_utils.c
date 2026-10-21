@@ -147,12 +147,7 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 				return 1;
 			}
 
-			snprintf(new_vm->id,
-				MAX_VM_ID_STRING,
-				"%s_%zu",
-				reservation->id,
-				reservation->num_vms + 1
-			);
+			snprintf(new_vm->id, MAX_VM_ID_STRING, "%s_%zu", reservation->id, reservation->num_vms + 1);
 
 			new_vm->type = item->vm_type;
 			new_vm->server = server;
@@ -162,18 +157,7 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 
 			server->hosted_vms[server->num_hosted_vms++] = new_vm;
 			reservation->vms[reservation->num_vms++] = new_vm;
-			// Dentro do ciclo de atribuição de VMs no reservation_commit:
-			char vm_dir[MAX_PATH_SIZE];
-			snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, new_vm->id);
 
-			// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
-			mkdir("/tmp/CloudIST", 0755);
-			char res_dir[MAX_PATH_SIZE];
-			snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
-			mkdir(res_dir, 0755);
-
-			// Copiar recursivamente
-			copy_directory_recursive(new_vm->type->input_folder, vm_dir);
 		}
 	}
 
@@ -252,12 +236,27 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	dc->num_reservations--;
 }
 
-void spawn_vm_child(VM *vm) {
-	(void)vm; // To avoid warning.
+void spawn_vm_child(VM *vm, Reservation *reservation){
 
-	// TODO: Limit RAM, DISK and use exec with cpulimit.
+	// coloca se esta parte aqui porque é onde é fechada a reserva
+	char vm_dir[MAX_PATH_SIZE];
+	char res_dir[MAX_PATH_SIZE];
+	snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
+	snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, vm->id);
+
+	// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
+	mkdir("/tmp/CloudIST", 0755);
+	mkdir(res_dir, 0755);
+
+	// Copiar recursivamente
+	int retorno=copy_directory_recursive(vm->type->input_folder, vm_dir);
+	if(retorno!=0){
+		fprintf(stderr, "Copia da vm %s falhou", vm->id);
+		return 1;
+	}
 
 	fprintf(stderr, "VM execution not implemented in base version.\n");
+	return 0;
 }
 
 int spawn_all_vms(Reservation *res) {
@@ -266,7 +265,7 @@ int spawn_all_vms(Reservation *res) {
 
 		// TODO: Implement fork code. Set VM PID and update VM state to running.
 
-		spawn_vm_child(vm);
+		spawn_vm_child(vm, res);
 
 	}
 

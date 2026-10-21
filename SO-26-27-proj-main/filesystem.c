@@ -51,6 +51,7 @@ int copy_directory_recursive(const char *src, const char *dst) {
     struct stat st;
     if (stat(src, &st) != 0) return -1;
 
+    // cria o "/tmp/CloudIST/%s/%s", reservation->id, new_vm->id 
     mkdir(dst, 0755);
 
     DIR *dir = opendir(src);
