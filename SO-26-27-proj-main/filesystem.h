@@ -35,4 +35,14 @@ int file_exists(const char *path);
  */
 int absolute_path(const char *path, char *buffer, size_t size);
 
+/**
+ * Copia recursivamente todo o conteudo de uma diretoria de origem
+ * para uma diretoria de destino.
+ *
+ * @param src Diretoria de origem.
+ * @param dst Diretoria de destino.
+ * @return 0 em caso de sucesso, -1 em caso de erro.
+ */
+int copy_directory_recursive(const char *src, const char *dst);
+
 #endif // FILESYSTEM__H

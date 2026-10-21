@@ -1,11 +1,13 @@
 #include "datacenter_utils.h"
-
+#include "filesystem.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
+#include <sys/stat.h> 
+#include <sys/types.h>
 
 VMType *VMType_exists(DataCenter *dc, const char* type_id){
 	for(size_t i = 0; i < dc->num_vm_types; i++){
@@ -160,6 +162,18 @@ int reservation_commit(DataCenter *dc, Reservation *reservation){
 
 			server->hosted_vms[server->num_hosted_vms++] = new_vm;
 			reservation->vms[reservation->num_vms++] = new_vm;
+			// Dentro do ciclo de atribuição de VMs no reservation_commit:
+			char vm_dir[MAX_PATH_SIZE];
+			snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, new_vm->id);
+
+			// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
+			mkdir("/tmp/CloudIST", 0755);
+			char res_dir[MAX_PATH_SIZE];
+			snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
+			mkdir(res_dir, 0755);
+
+			// Copiar recursivamente
+			copy_directory_recursive(new_vm->type->input_folder, vm_dir);
 		}
 	}
 
