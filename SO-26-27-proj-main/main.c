@@ -73,6 +73,7 @@ int main(int argc, char **argv){
 	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro
 	if (n == -1) {
 		perror("scandir");
+		datacenter_destroy(&dc);
 		return 1;
 	}
 	
@@ -80,13 +81,16 @@ int main(int argc, char **argv){
 
 		//construir caminho para o open
 
-		char caminho[MAX_PATH_SIZE+ 1 + 256];
+		char caminho[MAX_PATH_SIZE*2];
 		snprintf(caminho, sizeof(caminho), "%s/%s", dir, lista[i]->d_name);
 		//dir agora contem o caminho
 		int fd=open(caminho, O_RDONLY);
 
 		if(fd==-1){
 			perror("Erro ao abrir");
+			for (int k = i; k < n; k++) free(lista[k]);
+            free(lista);
+            datacenter_destroy(&dc);
 			return EXIT_FAILURE;
 		}
 
@@ -199,6 +203,7 @@ int main(int argc, char **argv){
 		free(lista[i]);
 	}
 	
-	datacenter_destroy(&dc);
 	free(lista);
+    datacenter_destroy(&dc);
+    return 0;
 }
