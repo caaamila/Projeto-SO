@@ -253,11 +253,11 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	int retorno=copy_directory_recursive(vm->type->input_folder, vm_dir);
 	if(retorno!=0){
 		fprintf(stderr, "Copia da vm %s falhou", vm->id);
-		return 1;
+		_exit(1);
 	}
 
-	fprintf(stderr, "VM execution not implemented in base version.\n");
-	return 0;
+	// fprintf(stderr, "VM execution not implemented in base version.\n");
+	// return 0;
 }
 
 int spawn_all_vms(Reservation *res) {

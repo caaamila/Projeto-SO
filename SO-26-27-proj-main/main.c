@@ -118,7 +118,7 @@ int main(int argc, char **argv){
 
 					break;
 				}
-
+				// comando R
 				case CMD_RESERVE: {
 					Reservation reservation = {0};
 
@@ -138,7 +138,7 @@ int main(int argc, char **argv){
 
 					break;
 				}
-
+				// comando A
 				case CMD_EXECUTE:
 					char id[MAX_STRING_SIZE];
 
