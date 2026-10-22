@@ -249,7 +249,7 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
 	mkdir("/tmp/CloudIST", 0755);
 	mkdir(res_dir, 0755);
-	mkdir(vm_dir, 0755);
+	// ja estava feito no copy_directory_recursive mkdir(vm_dir, 0755);
 
 	// Copiar recursivamente
 	int retorno=copy_directory_recursive(vm->type->input_folder, vm_dir);
