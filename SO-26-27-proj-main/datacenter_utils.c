@@ -245,9 +245,11 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
 	snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, vm->id);
 
+	
 	// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
 	mkdir("/tmp/CloudIST", 0755);
 	mkdir(res_dir, 0755);
+	mkdir(vm_dir, 0755);
 
 	// Copiar recursivamente
 	int retorno=copy_directory_recursive(vm->type->input_folder, vm_dir);
@@ -256,6 +258,26 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 		_exit(1);
 	}
 
+	if (chdir(vm_dir) != 0) { 
+		perror("chdir"); 
+		_exit(EXIT_FAILURE); 
+	}
+	struct rlimit lim;
+	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.ram << 30;
+	setrlimit(RLIMIT_AS, &lim);
+
+	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
+	setrlimit(RLIMIT_FSIZE, &lim);
+
+	double pct = vm->type->required.cpu / vm->server->total.cpu * 100.0;
+	char pct_str[32];
+	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
+
+	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", pct_str,
+	       "--", vm->type->exec_path, (char *)NULL);
+
+	perror("execlp");
+	_exit(EXIT_FAILURE);
 	// fprintf(stderr, "VM execution not implemented in base version.\n");
 	// return 0;
 }
@@ -263,10 +285,25 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 int spawn_all_vms(Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
+		pid_t pid;
+		switch (pid = fork()) {
+		case -1: // error
+			perror("fork");
+			exit(EXIT_FAILURE);
+
+		case 0: // child
+			spawn_vm_child(vm, res);
+			_exit(EXIT_FAILURE);
+
+		default: // parent
+			vm->pid = pid;
+			vm->state = VM_STATE_RUNNING;
+			break;
+		}
+	
+		
 
 		// TODO: Implement fork code. Set VM PID and update VM state to running.
-
-		spawn_vm_child(vm, res);
 
 	}
 
@@ -275,8 +312,8 @@ int spawn_all_vms(Reservation *res) {
 
 void wait_for_all_vms(Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
-		// TODO: IMPLEMENT WAITING FOR VM
-
+		int status;
+		waitpid(res->vms[i]->pid, &status, 0);
 		res->vms[i]->state = VM_STATE_TERMINATED;
 	}
 }

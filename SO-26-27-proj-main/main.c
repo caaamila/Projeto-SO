@@ -32,7 +32,7 @@ int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
 
-	if (argc != 6) {
+	if (argc != 7) {
 		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <cores-da-maquina-local-seleccionados-para-o-CloudIST> <input_dir>\n", argv[0]);
 		return 1;
 	}
