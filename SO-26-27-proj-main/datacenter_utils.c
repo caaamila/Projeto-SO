@@ -238,7 +238,8 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 
 void spawn_vm_child(VM *vm, Reservation *reservation){
 
-	// coloca se esta parte aqui porque é onde é fechada a reserva
+	// coloca se esta parte aqui para o pai nao estar ocupado a fazer a copia
+	// entao a child encarrega-se disso para deixar o pai fazer coisas mais importantes
 	char vm_dir[MAX_PATH_SIZE];
 	char res_dir[MAX_PATH_SIZE];
 	snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);

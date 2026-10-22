@@ -33,7 +33,7 @@ int main(int argc, char **argv){
 	datacenter_init(&dc);
 
 	if (argc != 6) {
-		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
+		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <cores-da-maquina-local-seleccionados-para-o-CloudIST> <input_dir>\n", argv[0]);
 		return 1;
 	}
 
@@ -41,27 +41,30 @@ int main(int argc, char **argv){
 	size_t ram;
 	size_t disk;
 	double cpu;
+	double cores;
 	char dir[MAX_PATH_SIZE];
 	
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 			parse_size_t_arg(argv[2], &ram) != 0 ||
 			parse_size_t_arg(argv[3], &disk) != 0 ||
-			parse_double_arg(argv[4], &cpu) != 0) {
+			parse_double_arg(argv[4], &cpu) != 0 ||
+			parse_double_arg(argv[5], &cores)) {
 		fprintf(stderr, "Invalid command line arguments.\n");
 		return 1;
 	}
 
-	if(strlen(argv[5])>=MAX_PATH_SIZE){
+	if(strlen(argv[6])>=MAX_PATH_SIZE){
 		printf("Nome da diretoria demasiado longo");
 		return 1;
 	}
 
-	strcpy(dir, argv[5]);
+	strcpy(dir, argv[6]);
 
 	Resources resources = {
     .ram = ram,
     .disk = disk,
-    .cpu = cpu
+    .cpu = cpu,
+	.cores=cores
 	};
 
 	if(datacenter_configure(&dc, servers, &resources) != 0){
