@@ -32,7 +32,7 @@ int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
 
-	if (argc != 7) {
+	if (argc != 8) {
 		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <cores-da-maquina-local-seleccionados-para-o-CloudIST> <input_dir>\n", argv[0]);
 		return 1;
 	}
@@ -172,7 +172,7 @@ int main(int argc, char **argv){
 						continue;
 					}
 
-					datacenter_wait(delay);
+					datacenter_wait(&dc, delay);
 					break;
 
 				case CMD_INVALID:

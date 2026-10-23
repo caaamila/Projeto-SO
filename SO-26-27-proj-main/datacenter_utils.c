@@ -236,6 +236,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 	dc->num_reservations--;
 }
 
+
 void spawn_vm_child(VM *vm, Reservation *reservation){
 
 	// coloca se esta parte aqui para o pai nao estar ocupado a fazer a copia
@@ -251,8 +252,15 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	mkdir(res_dir, 0755);
 	// ja estava feito no copy_directory_recursive mkdir(vm_dir, 0755);
 
+	char abs_input[MAX_PATH_SIZE];
+	char abs_exec[MAX_PATH_SIZE];
+	if (absolute_path(vm->type->input_folder, abs_input, sizeof(abs_input)) != 0 ||
+	    absolute_path(vm->type->exec_path, abs_exec, sizeof(abs_exec)) != 0) {
+		fprintf(stderr, "Nao foi possivel resolver os caminhos da vm %s\n", vm->id);
+		_exit(EXIT_FAILURE);
+	}
 	// Copiar recursivamente
-	int retorno=copy_directory_recursive(vm->type->input_folder, vm_dir);
+	int retorno=copy_directory_recursive(abs_input, vm_dir);
 	if(retorno!=0){
 		fprintf(stderr, "Copia da vm %s falhou", vm->id);
 		_exit(1);
@@ -274,7 +282,7 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
 
 	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", pct_str,
-	       "--", vm->type->exec_path, (char *)NULL);
+           "--", abs_exec, (char *)NULL);
 
 	perror("execlp");
 	_exit(EXIT_FAILURE);
@@ -282,7 +290,7 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	// return 0;
 }
 
-int spawn_all_vms(Reservation *res) {
+int spawn_all_vms( Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
 		pid_t pid;
@@ -334,4 +342,66 @@ const char *res_state_to_string(ReservationState state) {
 			case RES_STATE_FINISHED: return "FINISHED";
 			default:                 return "UNKNOWN";
     }
+}
+
+void datacenter_reap_finished_vms(DataCenter *dc) {
+  for (size_t i = 0; i < dc->num_reservations; ) {
+    Reservation *res = &dc->reservations[i];
+    
+    // Check state of VMs in this reservation
+    for (size_t j = 0; j < res->num_vms; j++) {
+      VM *vm = res->vms[j];
+      if (vm->state == VM_STATE_RUNNING) {
+        int status;
+        pid_t result = waitpid(vm->pid, &status, WNOHANG);
+        if (result > 0) {
+          // Process finished! Release VM resources back to server
+          vm->state = VM_STATE_TERMINATED;
+          
+          // Remove VM from server's hosted_vms list and release resources
+          Server *server = vm->server;
+          resources_add(&server->available, vm->type->required);
+
+          for (size_t k = 0; k < server->num_hosted_vms; k++) {
+            if (server->hosted_vms[k] == vm) {
+              memmove(&server->hosted_vms[k],
+                      &server->hosted_vms[k + 1],
+                      (server->num_hosted_vms - k - 1) * sizeof(VM *));
+              server->num_hosted_vms--;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Check if ALL VMs in this reservation are terminated
+    int all_terminated = (res->num_vms > 0);
+    for (size_t j = 0; j < res->num_vms; j++) {
+      if (res->vms[j]->state != VM_STATE_TERMINATED) {
+        all_terminated = 0;
+        break;
+      }
+    }
+
+    if (all_terminated && res->state == RES_STATE_RUNNING) {
+      // Free all VM structs of this reservation
+      for (size_t j = 0; j < res->num_vms; j++) {
+        free(res->vms[j]);
+        res->vms[j] = NULL;
+      }
+      res->num_vms = 0;
+
+      // Remove reservation from DataCenter list
+      memmove(&dc->reservations[i],
+              &dc->reservations[i + 1],
+              (dc->num_reservations - i - 1) * sizeof(Reservation));
+      dc->num_reservations--;
+      
+      // Do not increment i, as remaining reservations shifted left
+      continue;
+    }
+
+    i++;
+  }
 }

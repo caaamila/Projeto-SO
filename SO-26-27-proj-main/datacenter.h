@@ -147,10 +147,19 @@ int datacenter_list(DataCenter *dc);
 int datacenter_execute(DataCenter *dc, const char *reservation_id);
 
 /**
- * Executes a delay command.
+ * Executes a delay command, reaping finished VMs during the wait.
  * 
+ * @param dc Pointer to the DataCenter.
  * @param delay_ms Delay in ms.
  */
-void datacenter_wait(unsigned int delay_ms);
+void datacenter_wait(DataCenter *dc, unsigned int delay_ms);
+
+/**
+ * Checks for terminated child processes non-blockingly, reaps them,
+ * returns resources to physical servers, and destroys finished reservations.
+ *
+ * @param dc Pointer to the DataCenter.
+ */
+void datacenter_reap_finished_vms(DataCenter *dc);
 
 #endif // DATACENTER__H

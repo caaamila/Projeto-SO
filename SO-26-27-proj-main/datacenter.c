@@ -120,21 +120,14 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
 
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
-
-  if (spawn_all_vms(dc, res) != 0) return 1;
-
   res->state = RES_STATE_RUNNING;
-
-  wait_for_all_vms(res);
-
-  res->state = RES_STATE_FINISHED;
-
-  reservation_destroy(dc, res);
+  if (spawn_all_vms(res) != 0) return 1;
 
   return 0;
 }
 
 int datacenter_list(DataCenter *dc) {
+  datacenter_reap_finished_vms(dc);
   if (!dc->configured) {
     fprintf(stderr, "Data Center needs to be configured!\n");
     return 1;
@@ -232,7 +225,13 @@ int datacenter_list(DataCenter *dc) {
   return 0;
 }
 
-void datacenter_wait(unsigned int delay_ms){
-  struct timespec delay = (struct timespec){delay_ms / 1000, (delay_ms % 1000) * 1000000};
-  nanosleep(&delay, NULL);
+void datacenter_wait(DataCenter *dc, unsigned int delay_ms) {
+  unsigned int elapsed = 0;
+  struct timespec step = {0, 50 * 1000000}; // check every 50ms
+
+  while (elapsed < delay_ms) {
+    nanosleep(&step, NULL);
+    elapsed += 50;
+    datacenter_reap_finished_vms(dc);
+  }
 }
