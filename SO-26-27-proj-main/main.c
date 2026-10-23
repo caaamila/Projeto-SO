@@ -27,80 +27,37 @@ static int filtro(const struct dirent *e) {
     return ponto != NULL && strcmp(ponto, ".conf") == 0;
 }
 
+typedef struct { 
+	DataCenter *dc; 
+	struct dirent **files; 
+	int n; int next;
+    const char *dir; 
+	pthread_mutex_t m; 
+} Work;
 
-int main(int argc, char **argv){
-	DataCenter dc;
-	datacenter_init(&dc);
+static void *worker(void *arg) {
+  Work *w = arg;
+  for (;;) {
+    pthread_mutex_lock(&w->m);
+    int i = (w->next < w->n) ? w->next++ : -1;
+    pthread_mutex_unlock(&w->m);
+    if (i < 0) break;
+    char path[MAX_PATH_SIZE*2];
+    snprintf(path, sizeof path, "%s/%s", w->dir, w->files[i]->d_name);
+    process_file(w->dc, path);
+  }
+  return NULL;
+}
 
-	if (argc != 8) {
-		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <cores-da-maquina-local-seleccionados-para-o-CloudIST> <input_dir>\n", argv[0]);
+
+static int process_file(DataCenter *dc, const char *path) {
+	int fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		perror("Erro ao abrir");
 		return 1;
 	}
-
-	size_t servers;
-	size_t ram;
-	size_t disk;
-	double cpu;
-	double cores;
-	char dir[MAX_PATH_SIZE];
-	
-	if (parse_size_t_arg(argv[1], &servers) != 0 ||
-			parse_size_t_arg(argv[2], &ram) != 0 ||
-			parse_size_t_arg(argv[3], &disk) != 0 ||
-			parse_double_arg(argv[4], &cpu) != 0 ||
-			parse_double_arg(argv[5], &cores)) {
-		fprintf(stderr, "Invalid command line arguments.\n");
-		return 1;
-	}
-
-	if(strlen(argv[6])>=MAX_PATH_SIZE){
-		printf("Nome da diretoria demasiado longo");
-		return 1;
-	}
-
-	strcpy(dir, argv[6]);
-	
-	Resources resources = {
-    .ram = ram,
-    .disk = disk,
-    .cpu = cpu,
-	};
-
-	if(datacenter_configure(&dc, servers, &resources) != 0){
-		fprintf(stderr, "Failed to configure Data Center.\n");
-		return 1;
-	}
-
-	dc.cores_maquina=cores;
-
-	struct dirent **lista;
-	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro
-	if (n == -1) {
-		perror("scandir");
-		datacenter_destroy(&dc);
-		return 1;
-	}
-	
-	for(int i=0; i<n; i++){
-
-		//construir caminho para o open
-
-		char caminho[MAX_PATH_SIZE*2];
-		snprintf(caminho, sizeof(caminho), "%s/%s", dir, lista[i]->d_name);
-		//dir agora contem o caminho
-		int fd=open(caminho, O_RDONLY);
-
-		if(fd==-1){
-			perror("Erro ao abrir");
-			for (int k = i; k < n; k++) free(lista[k]);
-            free(lista);
-            datacenter_destroy(&dc);
-			return EXIT_FAILURE;
-		}
-
-		int fim=0; //0 false ou seja nao acabou
-
-		while(!fim){
+	int fim = 0;
+	while(!fim){
 			switch (get_next_command(fd)){
 				case CMD_DEFINE: {
 					VMType vmtype;
@@ -201,13 +158,92 @@ int main(int argc, char **argv){
 					break;
 			}
 		}
+}
+int main(int argc, char **argv){
+	DataCenter dc;
+	datacenter_init(&dc);
 
-		close(fd);
+	if (argc != 8) {
+		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <cores-da-maquina-local-seleccionados-para-o-CloudIST> <input_dir> <MAX_THREADS>\n", argv[0]);
+		return 1;
+	}
 
-		free(lista[i]);
+	size_t servers;
+	size_t ram;
+	size_t disk;
+	ssize_t max_threads;
+	double cpu;
+	double cores;
+	char dir[MAX_PATH_SIZE];
+	
+	if (parse_size_t_arg(argv[1], &servers) != 0 ||
+	    parse_size_t_arg(argv[2], &ram) != 0 ||
+	    parse_size_t_arg(argv[3], &disk) != 0 ||
+	    parse_double_arg(argv[4], &cpu) != 0 ||
+	    parse_double_arg(argv[5], &cores) != 0 ||
+	    parse_size_t_arg(argv[7], &max_threads) != 0 || max_threads == 0) {
+		fprintf(stderr, "Invalid command line arguments.\n");
+		return 1;
+	}
+
+	if(strlen(argv[6])>=MAX_PATH_SIZE){
+		printf("Nome da diretoria demasiado longo");
+		return 1;
+	}
+
+	strcpy(dir, argv[6]);
+
+	Resources resources = {
+    .ram = ram,
+    .disk = disk,
+    .cpu = cpu,
+	.cores=cores
+	};
+
+	if(datacenter_configure(&dc, servers, &resources) != 0){
+		fprintf(stderr, "Failed to configure Data Center.\n");
+		return 1;
+	}
+
+	struct dirent **lista;
+	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro
+	if (n == -1) {
+		perror("scandir");
+		datacenter_destroy(&dc);
+		return 1;
 	}
 	
+	Work w = { .dc = &dc, .files = lista, .n = n, .next = 0, .dir = argv[6] };
+	pthread_mutex_init(&w.m, NULL);
+
+	size_t nthreads = (size_t)n < max_threads ? (size_t)n : max_threads;
+	pthread_t *tids = malloc((nthreads ? nthreads : 1) * sizeof(pthread_t));
+	if (tids == NULL) {
+		perror("malloc");
+		nthreads = 0;
+	}
+
+	size_t created = 0;
+	for (size_t t = 0; t < nthreads; t++) {
+		if (pthread_create(&tids[t], NULL, worker, &w) != 0) {
+			fprintf(stderr, "Failed to create thread.\n");
+			break;
+		}
+		created++;
+	}
+
+	if (created == 0)
+		worker(&w);
+ 
+	for (size_t t = 0; t < created; t++)
+		pthread_join(tids[t], NULL);
+ 
+	pthread_mutex_destroy(&w.m);
+	free(tids);
+	for (int i = 0; i < n; i++)
+		free(lista[i]);
 	free(lista);
-    datacenter_destroy(&dc);
-    return 0;
+ 
+	datacenter_destroy(&dc);
+	return 0;
 }
