@@ -10,7 +10,7 @@ void datacenter_init(DataCenter *dc) {
   pthread_mutex_init(&dc->lock, NULL);
   dc->servers = NULL;
   dc->num_servers = 0;
-
+  dc->cores_maquina=0;
   dc->num_vm_types = 0;
 
   dc->num_reservations = 0;
@@ -131,7 +131,7 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
   res->state = RES_STATE_RUNNING;
-  if (spawn_all_vms(res) != 0){
+  if (spawn_all_vms(res, dc) != 0){
     pthread_mutex_unlock(&dc->lock);
     return 1;
   } 

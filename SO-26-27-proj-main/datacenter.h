@@ -38,7 +38,6 @@ typedef struct Server {
 	Resources total;     // Resources that Server has.
 	Resources available; // Resources still available.
     size_t num_servers;
-
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
 } Server;
@@ -72,13 +71,15 @@ typedef struct DataCenter {
 	Server *servers;			     // List of Servers.
 	size_t num_servers;              // Number of Servers.
 
+    double cores_maquina;
+
 	VMType vm_types[MAX_VM_TYPES];
     size_t num_vm_types;
 
 	Reservation reservations[MAX_RESERVATIONS];
     size_t num_reservations;
 
-	int configured;		      // Wheter the datacenter is configured or not.
+	int configured;		      // Whether the datacenter is configured or not.
     pthread_mutex_t lock;
 } DataCenter;
 

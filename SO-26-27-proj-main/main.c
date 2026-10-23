@@ -59,18 +59,19 @@ int main(int argc, char **argv){
 	}
 
 	strcpy(dir, argv[6]);
-
+	
 	Resources resources = {
     .ram = ram,
     .disk = disk,
     .cpu = cpu,
-	.cores=cores
 	};
 
 	if(datacenter_configure(&dc, servers, &resources) != 0){
 		fprintf(stderr, "Failed to configure Data Center.\n");
 		return 1;
 	}
+
+	dc.cores_maquina=cores;
 
 	struct dirent **lista;
 	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro

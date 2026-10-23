@@ -237,7 +237,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 }
 
 
-void spawn_vm_child(VM *vm, Reservation *reservation){
+void spawn_vm_child(VM *vm, Reservation *reservation, DataCenter *dc){
 
 	// coloca se esta parte aqui para o pai nao estar ocupado a fazer a copia
 	// entao a child encarrega-se disso para deixar o pai fazer coisas mais importantes
@@ -254,6 +254,7 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 
 	char abs_input[MAX_PATH_SIZE];
 	char abs_exec[MAX_PATH_SIZE];
+
 	if (absolute_path(vm->type->input_folder, abs_input, sizeof(abs_input)) != 0 ||
 	    absolute_path(vm->type->exec_path, abs_exec, sizeof(abs_exec)) != 0) {
 		fprintf(stderr, "Nao foi possivel resolver os caminhos da vm %s\n", vm->id);
@@ -266,23 +267,31 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 		_exit(1);
 	}
 
+	// chdir altera o diretorio em q esta a correr o processo para corrar na pasta da VM onde tem os ficheiros q foram copiados
 	if (chdir(vm_dir) != 0) { 
 		perror("chdir"); 
 		_exit(EXIT_FAILURE); 
 	}
 	struct rlimit lim;
+
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.ram << 30;
 	setrlimit(RLIMIT_AS, &lim);
 
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
 	setrlimit(RLIMIT_FSIZE, &lim);
 
-	double pct = (vm->type->required.cpu /(vm->server->total.cpu * (double)vm->server->num_servers)) * vm->server->total.cores * 100.0;
-	char pct_str[32];
-	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
+	if (setrlimit(RLIMIT_FSIZE, &lim) != 0 || setrlimit(RLIMIT_AS, &lim)!=0) {
+		perror("setrlimit");
+		_exit(EXIT_FAILURE);
+	}
 
-	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", pct_str,
-           "--", abs_exec, (char *)NULL);
+	double cpulimit = 100 * (vm->type->required.cpu * dc->cores_maquina)/
+			((dc->servers->total.cpu * (double)dc->num_servers));
+
+	char cpulimit_str[MAX_STRING_SIZE];
+	snprintf(cpulimit_str, sizeof(cpulimit_str), "%d", (int)cpulimit);   // cpulimit -l espera um inteiro
+
+	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpulimit_str, "--", abs_exec, (char *)NULL);
 
 	perror("execlp");
 	_exit(EXIT_FAILURE);
@@ -290,17 +299,17 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	// return 0;
 }
 
-int spawn_all_vms( Reservation *res) {
+int spawn_all_vms(Reservation *res, DataCenter *dc) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
 		pid_t pid;
 		switch (pid = fork()) {
 		case -1: // error
 			perror("fork");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
 
 		case 0: // child
-			spawn_vm_child(vm, res);
+			spawn_vm_child(vm, res, dc);
 			_exit(EXIT_FAILURE);
 
 		default: // parent
@@ -309,10 +318,6 @@ int spawn_all_vms( Reservation *res) {
 			break;
 		}
 	
-		
-
-		// TODO: Implement fork code. Set VM PID and update VM state to running.
-
 	}
 
 	return 0;
