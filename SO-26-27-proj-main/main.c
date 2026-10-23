@@ -21,7 +21,7 @@
 //               unsigned char  d_type;      /* Type of file; not supported by all filesystem types */
 //               char           d_name[256]; /* Null-terminated filename */
 //  };
-
+//tests
 static int filtro(const struct dirent *e) {
     const char *ponto = strrchr(e->d_name, '.');
     return ponto != NULL && strcmp(ponto, ".conf") == 0;
