@@ -277,7 +277,7 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
 	setrlimit(RLIMIT_FSIZE, &lim);
 
-	double pct = vm->type->required.cpu / vm->server->total.cpu * 100.0;
+	double pct = (vm->type->required.cpu /(vm->server->total.cpu * (double)vm->server->num_servers)) * vm->server->total.cores * 100.0;
 	char pct_str[32];
 	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
 
@@ -345,42 +345,44 @@ const char *res_state_to_string(ReservationState state) {
 }
 
 void datacenter_reap_finished_vms(DataCenter *dc) {
-  for (size_t i = 0; i < dc->num_reservations; ) {
-    Reservation *res = &dc->reservations[i];
+	pthread_mutex_lock(&dc->lock);
+  	for (size_t i = 0; i < dc->num_reservations; ) {
+    	Reservation *res = &dc->reservations[i];
     
-    // Check state of VMs in this reservation
-    for (size_t j = 0; j < res->num_vms; j++) {
-      VM *vm = res->vms[j];
-      if (vm->state == VM_STATE_RUNNING) {
-        int status;
-        pid_t result = waitpid(vm->pid, &status, WNOHANG);
-        if (result > 0) {
-          // Process finished! Release VM resources back to server
-          vm->state = VM_STATE_TERMINATED;
-          
-          // Remove VM from server's hosted_vms list and release resources
-          Server *server = vm->server;
-          resources_add(&server->available, vm->type->required);
+		// Check state of VMs in this reservation
+		for (size_t j = 0; j < res->num_vms; j++) {
+			VM *vm = res->vms[j];
+			if (vm->state == VM_STATE_RUNNING) {
+				int status;
+				pid_t result = waitpid(vm->pid, &status, WNOHANG);
+				if (result > 0) {
+					// Process finished! Release VM resources back to server
+					vm->state = VM_STATE_TERMINATED;
+			
+					// Remove VM from server's hosted_vms list and release resources
+					Server *server = vm->server;
+					resources_add(&server->available, vm->type->required);
 
-          for (size_t k = 0; k < server->num_hosted_vms; k++) {
-            if (server->hosted_vms[k] == vm) {
-              memmove(&server->hosted_vms[k],
-                      &server->hosted_vms[k + 1],
-                      (server->num_hosted_vms - k - 1) * sizeof(VM *));
-              server->num_hosted_vms--;
-              break;
-            }
-          }
+					for (size_t k = 0; k < server->num_hosted_vms; k++) {
+						if (server->hosted_vms[k] == vm) {
+						memmove(&server->hosted_vms[k],
+								&server->hosted_vms[k + 1],
+								(server->num_hosted_vms - k - 1) * sizeof(VM *));
+						server->num_hosted_vms--;
+						break;
+				}
+			}
         }
       }
+	
     }
 
     // Check if ALL VMs in this reservation are terminated
     int all_terminated = (res->num_vms > 0);
     for (size_t j = 0; j < res->num_vms; j++) {
-      if (res->vms[j]->state != VM_STATE_TERMINATED) {
-        all_terminated = 0;
-        break;
+    	if (res->vms[j]->state != VM_STATE_TERMINATED) {
+        	all_terminated = 0;
+        	break;
       }
     }
 
@@ -404,4 +406,5 @@ void datacenter_reap_finished_vms(DataCenter *dc) {
 
     i++;
   }
+  pthread_mutex_unlock(&dc->lock);
 }

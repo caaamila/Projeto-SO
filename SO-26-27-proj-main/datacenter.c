@@ -7,6 +7,7 @@
 #include <string.h>
 
 void datacenter_init(DataCenter *dc) {
+  pthread_mutex_init(&dc->lock, NULL);
   dc->servers = NULL;
   dc->num_servers = 0;
 
@@ -45,6 +46,7 @@ int datacenter_configure(DataCenter *dc, size_t num_servers, Resources *resource
   }
 
   for (size_t i = 0; i < num_servers; i++) {
+    dc->servers[i].num_servers = num_servers;
     dc->servers[i].id = i+1;
     dc->servers[i].total = *resources;
     dc->servers[i].available = *resources;
@@ -89,40 +91,51 @@ int datacenter_define_VM(DataCenter *dc, VMType *type){
 }
 
 int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
+  pthread_mutex_lock(&dc->lock);
   if (!dc->configured) {
     fprintf(stderr, "Data Center needs to be configured!\n");
+    pthread_mutex_unlock(&dc->lock);
     return 1;
   }
 
   if(reservation_validate(dc, reservation) != 0){
+    pthread_mutex_unlock(&dc->lock);
     return 1;
   }
 
   if (dc->num_reservations >= MAX_RESERVATIONS){
     fprintf(stderr, "Max number of reservations reached\n");
+    pthread_mutex_unlock(&dc->lock);
     return 1;
   }
 
-  if (reservation_commit(dc, reservation) != 0)
+  if (reservation_commit(dc, reservation) != 0){
+    pthread_mutex_unlock(&dc->lock);
     return 1;
+  }
 
   dc->reservations[dc->num_reservations] = *reservation;
   dc->num_reservations++;
-
+  pthread_mutex_unlock(&dc->lock);
   return 0;
 }
 
 int datacenter_execute(DataCenter *dc, const char *reservation_id) {
+  pthread_mutex_lock(&dc->lock);
   if(!dc->configured){
     fprintf(stderr, "Data Center needs to be configured!\n");
+    pthread_mutex_unlock(&dc->lock);
     return 1;
   }
 
   Reservation *res = find_pending_reservation(dc, reservation_id);
   if (!res) return 1;
   res->state = RES_STATE_RUNNING;
-  if (spawn_all_vms(res) != 0) return 1;
-
+  if (spawn_all_vms(res) != 0){
+    pthread_mutex_unlock(&dc->lock);
+    return 1;
+  } 
+  pthread_mutex_unlock(&dc->lock);
   return 0;
 }
 
@@ -130,6 +143,7 @@ int datacenter_list(DataCenter *dc) {
   datacenter_reap_finished_vms(dc);
   if (!dc->configured) {
     fprintf(stderr, "Data Center needs to be configured!\n");
+    pthread_mutex_unlock(&dc->lock);
     return 1;
   }
 

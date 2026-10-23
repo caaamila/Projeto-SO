@@ -3,10 +3,12 @@
 
 #include <stdio.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #include "resources.h"
 #include "constants.h"
 #include "filesystem.h"
+
 
 typedef struct VMType{
   char id[MAX_STRING_SIZE];        // Id of VM type. eg: "V1"
@@ -35,6 +37,7 @@ typedef struct Server {
 	size_t id;		     // Server ID (1, 2, 3, ...)
 	Resources total;     // Resources that Server has.
 	Resources available; // Resources still available.
+    size_t num_servers;
 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
@@ -76,6 +79,7 @@ typedef struct DataCenter {
     size_t num_reservations;
 
 	int configured;		      // Wheter the datacenter is configured or not.
+    pthread_mutex_t lock;
 } DataCenter;
 
 /**
