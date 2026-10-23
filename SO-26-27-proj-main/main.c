@@ -36,6 +36,8 @@ typedef struct {
 	pthread_mutex_t m; 
 } Work;
 
+static int process_file(DataCenter *dc, const char *path);
+
 static void *worker(void *arg) {
   Work *w = arg;
   for (;;) {
@@ -68,7 +70,7 @@ static int process_file(DataCenter *dc, const char *path) {
 						continue;
 					}
 
-					if(datacenter_define_VM(&dc, &vmtype) != 0){
+					if(datacenter_define_VM(dc, &vmtype) != 0){
 						fprintf(stderr, "Failed to define VM.\n");
 						continue;
 					}
@@ -88,7 +90,7 @@ static int process_file(DataCenter *dc, const char *path) {
 						continue;
 					}
 
-					if (datacenter_reserve(&dc, &reservation) != 0) {
+					if (datacenter_reserve(dc, &reservation) != 0) {
 						fprintf(stderr, "Failed to reserve VMs.\n");
 						continue;
 					}
@@ -106,7 +108,7 @@ static int process_file(DataCenter *dc, const char *path) {
 						continue;
 					}
 
-					if (datacenter_execute(&dc, id) != 0) {
+					if (datacenter_execute(dc, id) != 0) {
 						fprintf(stderr, "Failed to execute reservation.\n");
 						continue;
 					}
@@ -116,7 +118,7 @@ static int process_file(DataCenter *dc, const char *path) {
 					break;
 
 				case CMD_LIST:
-					if (datacenter_list(&dc) != 0) {
+					if (datacenter_list(dc) != 0) {
 						fprintf(stderr, "Failed to list VMs.\n");
 						continue;
 					}
@@ -131,7 +133,7 @@ static int process_file(DataCenter *dc, const char *path) {
 						continue;
 					}
 
-					datacenter_wait(&dc, delay);
+					datacenter_wait(dc, delay);
 					break;
 
 				case CMD_INVALID:
@@ -159,8 +161,11 @@ static int process_file(DataCenter *dc, const char *path) {
 					break;
 			}
 		}
-}
+	close(fd);
+   	return 0;
+   }
 
+   
 int main(int argc, char **argv){
 	DataCenter dc;
 	datacenter_init(&dc);
@@ -173,7 +178,7 @@ int main(int argc, char **argv){
 	size_t servers;
 	size_t ram;
 	size_t disk;
-	ssize_t max_threads;
+	size_t max_threads;
 	double cpu;
 	double cores;
 	char dir[MAX_PATH_SIZE];
@@ -206,7 +211,6 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	dc.cores_maquina=cores;
 
 	struct dirent **lista;
 	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro

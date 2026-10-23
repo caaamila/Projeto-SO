@@ -37,9 +37,10 @@ typedef struct Server {
 	size_t id;		     // Server ID (1, 2, 3, ...)
 	Resources total;     // Resources that Server has.
 	Resources available; // Resources still available.
-    size_t num_servers;
+ 
 	VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
+    pthread_mutex_t lock;  // protects available, hosted_vms, num_hosted_vms
 } Server;
 
 typedef enum {
@@ -70,17 +71,17 @@ typedef struct Reservation {
 typedef struct DataCenter {
 	Server *servers;			     // List of Servers.
 	size_t num_servers;              // Number of Servers.
-
-    double cores_maquina;
-
+ 
 	VMType vm_types[MAX_VM_TYPES];
     size_t num_vm_types;
-
+ 
 	Reservation reservations[MAX_RESERVATIONS];
     size_t num_reservations;
-
-	int configured;		      // Whether the datacenter is configured or not.
-    pthread_mutex_t lock;
+ 
+	int configured;		      // Wheter the datacenter is configured or not.
+    pthread_rwlock_t types_lock; // protects vm_types / num_vm_types
+    pthread_mutex_t res_lock;    // protects reservations / num_reservations and VM/reservation states
+    pthread_mutex_t reap_lock;   // serializes reapers
 } DataCenter;
 
 /**

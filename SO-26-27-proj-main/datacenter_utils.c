@@ -237,24 +237,23 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 }
 
 
-void spawn_vm_child(VM *vm, Reservation *reservation, DataCenter *dc){
-
+void spawn_vm_child(VM *vm, Reservation *reservation){
+ 
 	// coloca se esta parte aqui para o pai nao estar ocupado a fazer a copia
 	// entao a child encarrega-se disso para deixar o pai fazer coisas mais importantes
 	char vm_dir[MAX_PATH_SIZE];
 	char res_dir[MAX_PATH_SIZE];
 	snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
 	snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, vm->id);
-
+ 
 	
 	// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
 	mkdir("/tmp/CloudIST", 0755);
 	mkdir(res_dir, 0755);
 	// ja estava feito no copy_directory_recursive mkdir(vm_dir, 0755);
-
+ 
 	char abs_input[MAX_PATH_SIZE];
 	char abs_exec[MAX_PATH_SIZE];
-
 	if (absolute_path(vm->type->input_folder, abs_input, sizeof(abs_input)) != 0 ||
 	    absolute_path(vm->type->exec_path, abs_exec, sizeof(abs_exec)) != 0) {
 		fprintf(stderr, "Nao foi possivel resolver os caminhos da vm %s\n", vm->id);
@@ -266,60 +265,56 @@ void spawn_vm_child(VM *vm, Reservation *reservation, DataCenter *dc){
 		fprintf(stderr, "Copia da vm %s falhou", vm->id);
 		_exit(1);
 	}
-
-	// chdir altera o diretorio em q esta a correr o processo para corrar na pasta da VM onde tem os ficheiros q foram copiados
+ 
 	if (chdir(vm_dir) != 0) { 
 		perror("chdir"); 
 		_exit(EXIT_FAILURE); 
 	}
 	struct rlimit lim;
-
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.ram << 30;
 	setrlimit(RLIMIT_AS, &lim);
-
+ 
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
 	setrlimit(RLIMIT_FSIZE, &lim);
-
-	if (setrlimit(RLIMIT_FSIZE, &lim) != 0 || setrlimit(RLIMIT_AS, &lim)!=0) {
-		perror("setrlimit");
-		_exit(EXIT_FAILURE);
-	}
-
-	double cpulimit = 100 * (vm->type->required.cpu * dc->cores_maquina)/
-			((dc->servers->total.cpu * (double)dc->num_servers));
-
-	char cpulimit_str[MAX_STRING_SIZE];
-	snprintf(cpulimit_str, sizeof(cpulimit_str), "%d", (int)cpulimit);   // cpulimit -l espera um inteiro
-
-	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpulimit_str, "--", abs_exec, (char *)NULL);
-
+ 
+	double pct = vm->type->required.cpu / vm->server->total.cpu * 100.0;
+	char pct_str[32];
+	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
+ 
+	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", pct_str,
+           "--", abs_exec, (char *)NULL);
+ 
 	perror("execlp");
 	_exit(EXIT_FAILURE);
 	// fprintf(stderr, "VM execution not implemented in base version.\n");
 	// return 0;
 }
 
-int spawn_all_vms(Reservation *res, DataCenter *dc) {
+int spawn_all_vms( Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
 		pid_t pid;
 		switch (pid = fork()) {
 		case -1: // error
 			perror("fork");
-			_exit(EXIT_FAILURE);
-
+			exit(EXIT_FAILURE);
+ 
 		case 0: // child
-			spawn_vm_child(vm, res, dc);
+			spawn_vm_child(vm, res);
 			_exit(EXIT_FAILURE);
-
+ 
 		default: // parent
 			vm->pid = pid;
 			vm->state = VM_STATE_RUNNING;
 			break;
 		}
 	
+		
+ 
+		// TODO: Implement fork code. Set VM PID and update VM state to running.
+ 
 	}
-
+ 
 	return 0;
 }
 
@@ -350,66 +345,70 @@ const char *res_state_to_string(ReservationState state) {
 }
 
 void datacenter_reap_finished_vms(DataCenter *dc) {
-	pthread_mutex_lock(&dc->lock);
-  	for (size_t i = 0; i < dc->num_reservations; ) {
-    	Reservation *res = &dc->reservations[i];
-    
-		// Check state of VMs in this reservation
+	pthread_mutex_lock(&dc->reap_lock);
+ 
+	VM *finished[MAX_RESERVATIONS * MAX_RESERVATION_VMS > 4096 ? 4096 : MAX_RESERVATIONS * MAX_RESERVATION_VMS];
+	size_t nfinished = 0;
+ 
+	/* Step 1: detect terminated processes (res_lock only). */
+	pthread_mutex_lock(&dc->res_lock);
+	for (size_t i = 0; i < dc->num_reservations; i++) {
+		Reservation *res = &dc->reservations[i];
 		for (size_t j = 0; j < res->num_vms; j++) {
 			VM *vm = res->vms[j];
-			if (vm->state == VM_STATE_RUNNING) {
-				int status;
-				pid_t result = waitpid(vm->pid, &status, WNOHANG);
-				if (result > 0) {
-					// Process finished! Release VM resources back to server
-					vm->state = VM_STATE_TERMINATED;
-			
-					// Remove VM from server's hosted_vms list and release resources
-					Server *server = vm->server;
-					resources_add(&server->available, vm->type->required);
-
-					for (size_t k = 0; k < server->num_hosted_vms; k++) {
-						if (server->hosted_vms[k] == vm) {
-						memmove(&server->hosted_vms[k],
-								&server->hosted_vms[k + 1],
-								(server->num_hosted_vms - k - 1) * sizeof(VM *));
-						server->num_hosted_vms--;
-						break;
-				}
+			if (vm->state != VM_STATE_RUNNING)
+				continue;
+			int status;
+			if (waitpid(vm->pid, &status, WNOHANG) > 0) {
+				vm->state = VM_STATE_TERMINATED;
+				if (nfinished < sizeof(finished) / sizeof(finished[0]))
+					finished[nfinished++] = vm;
 			}
-        }
-      }
-	
-    }
-
-    // Check if ALL VMs in this reservation are terminated
-    int all_terminated = (res->num_vms > 0);
-    for (size_t j = 0; j < res->num_vms; j++) {
-    	if (res->vms[j]->state != VM_STATE_TERMINATED) {
-        	all_terminated = 0;
-        	break;
-      }
-    }
-
-    if (all_terminated && res->state == RES_STATE_RUNNING) {
-      // Free all VM structs of this reservation
-      for (size_t j = 0; j < res->num_vms; j++) {
-        free(res->vms[j]);
-        res->vms[j] = NULL;
-      }
-      res->num_vms = 0;
-
-      // Remove reservation from DataCenter list
-      memmove(&dc->reservations[i],
-              &dc->reservations[i + 1],
-              (dc->num_reservations - i - 1) * sizeof(Reservation));
-      dc->num_reservations--;
-      
-      // Do not increment i, as remaining reservations shifted left
-      continue;
-    }
-
-    i++;
-  }
-  pthread_mutex_unlock(&dc->lock);
+		}
+	}
+	pthread_mutex_unlock(&dc->res_lock);
+ 
+	/* Step 2: give resources back, one server lock at a time. */
+	for (size_t k = 0; k < nfinished; k++) {
+		VM *vm = finished[k];
+		Server *server = vm->server;
+ 
+		pthread_mutex_lock(&server->lock);
+		resources_add(&server->available, vm->type->required);
+		for (size_t h = 0; h < server->num_hosted_vms; h++) {
+			if (server->hosted_vms[h] == vm) {
+				memmove(&server->hosted_vms[h], &server->hosted_vms[h + 1],
+				        (server->num_hosted_vms - h - 1) * sizeof(VM *));
+				server->num_hosted_vms--;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&server->lock);
+	}
+ 
+	/* Step 3: delete reservations whose VMs have all terminated (and were released). */
+	pthread_mutex_lock(&dc->res_lock);
+	for (size_t i = 0; i < dc->num_reservations; ) {
+		Reservation *res = &dc->reservations[i];
+		int all_terminated = (res->num_vms > 0 && res->state == RES_STATE_RUNNING);
+		for (size_t j = 0; all_terminated && j < res->num_vms; j++)
+			if (res->vms[j]->state != VM_STATE_TERMINATED)
+				all_terminated = 0;
+ 
+		if (all_terminated) {
+			for (size_t j = 0; j < res->num_vms; j++) {
+				free(res->vms[j]);
+				res->vms[j] = NULL;
+			}
+			res->num_vms = 0;
+			memmove(&dc->reservations[i], &dc->reservations[i + 1],
+			        (dc->num_reservations - i - 1) * sizeof(Reservation));
+			dc->num_reservations--;
+			continue;
+		}
+		i++;
+	}
+	pthread_mutex_unlock(&dc->res_lock);
+ 
+	pthread_mutex_unlock(&dc->reap_lock);
 }
