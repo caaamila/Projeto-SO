@@ -211,6 +211,7 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
+	dc.cores_maquina=cores;
 
 	struct dirent **lista;
 	int n = scandir(dir, &lista, filtro, alphasort); //devolve o numero de ficheiros q obedecem ao filtro

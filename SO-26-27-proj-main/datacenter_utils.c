@@ -289,6 +289,10 @@ void spawn_vm_child(VM *vm, Reservation *reservation, DataCenter *dc) {
 	double cpulimit = 100 * (vm->type->required.cpu * dc->cores_maquina)/
 			((dc->servers->total.cpu * (double)dc->num_servers));
 
+	if(cpulimit <1.0){
+		cpulimit=1.0;
+	}
+
 	char cpulimit_str[MAX_STRING_SIZE];
 	snprintf(cpulimit_str, sizeof(cpulimit_str), "%d", (int)cpulimit);   // cpulimit -l espera um inteiro
 
