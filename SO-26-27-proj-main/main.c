@@ -42,9 +42,17 @@ static void *worker(void *arg) {
   Work *w = arg;
   for (;;) {
     pthread_mutex_lock(&w->m);
-    int i = (w->next < w->n) ? w->next++ : -1;
+    int i;
+	if(w->next < w->n){
+		i=w->next;
+		w->next++;
+	}
+	else{
+		i=-1;
+	}
     pthread_mutex_unlock(&w->m);
     if (i < 0) break;
+	
     char path[MAX_PATH_SIZE*2];
     snprintf(path, sizeof path, "%s/%s", w->dir, w->files[i]->d_name);
     process_file(w->dc, path);

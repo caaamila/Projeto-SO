@@ -78,7 +78,7 @@ typedef struct DataCenter {
 	Reservation reservations[MAX_RESERVATIONS];
     size_t num_reservations;
  
-	int configured;		      // Wheter the datacenter is configured or not.
+	int configured;		      // Whether the datacenter is configured or not.
     pthread_rwlock_t types_lock; // protects vm_types / num_vm_types
     pthread_mutex_t res_lock;    // protects reservations / num_reservations and VM/reservation states
     pthread_mutex_t reap_lock;   // serializes reapers
