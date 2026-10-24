@@ -12,7 +12,7 @@ void datacenter_init(DataCenter *dc) {
   dc->num_vm_types = 0;
   dc->num_reservations = 0;
   dc->configured = 0;
- 
+  dc->cores_maquina=0;
   pthread_rwlock_init(&dc->types_lock, NULL);
   pthread_mutex_init(&dc->res_lock, NULL);
   pthread_mutex_init(&dc->reap_lock, NULL);
@@ -168,7 +168,7 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id) {
  
   res->state = RES_STATE_RUNNING;
   /* only fork() happens here; the heavy copy runs in the child */
-  int r = spawn_all_vms(res);
+  int r = spawn_all_vms(res, dc);
  
   pthread_mutex_unlock(&dc->res_lock);
   return r != 0;

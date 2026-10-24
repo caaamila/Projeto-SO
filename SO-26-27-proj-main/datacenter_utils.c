@@ -237,7 +237,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 }
 
 
-void spawn_vm_child(VM *vm, Reservation *reservation){
+void spawn_vm_child(VM *vm, Reservation *reservation, DataCenter *dc) {
  
 	// coloca se esta parte aqui para o pai nao estar ocupado a fazer a copia
 	// entao a child encarrega-se disso para deixar o pai fazer coisas mais importantes
@@ -268,7 +268,8 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 		fprintf(stderr, "Copia da vm %s falhou", vm->id);
 		_exit(1);
 	}
- 
+
+	// chdir altera o diretorio em q esta a correr o processo para corrar na pasta da VM onde tem os ficheiros q foram copiados
 	if (chdir(vm_dir) != 0) { 
 		perror("chdir"); 
 		_exit(EXIT_FAILURE); 
@@ -279,7 +280,12 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
  
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
 	setrlimit(RLIMIT_FSIZE, &lim);
- 
+
+	if (setrlimit(RLIMIT_FSIZE, &lim) != 0 || setrlimit(RLIMIT_AS, &lim)!=0) {
+		perror("setrlimit");
+		_exit(EXIT_FAILURE);
+	}
+
 	double cpulimit = 100 * (vm->type->required.cpu * dc->cores_maquina)/
 			((dc->servers->total.cpu * (double)dc->num_servers));
 
@@ -297,17 +303,17 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 
 
 
-int spawn_all_vms( Reservation *res) {
+int spawn_all_vms( Reservation *res, DataCenter *dc) {
 	for (size_t i = 0; i < res->num_vms; i++) {
 		VM *vm = res->vms[i];
 		pid_t pid;
 		switch (pid = fork()) {
 		case -1: // error
 			perror("fork");
-			exit(EXIT_FAILURE);
+			_exit(EXIT_FAILURE);
  
 		case 0: // child
-			spawn_vm_child(vm, res);
+			spawn_vm_child(vm, res, dc);
 			_exit(EXIT_FAILURE);
  
 		default: // parent
