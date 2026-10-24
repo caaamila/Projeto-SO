@@ -243,12 +243,15 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	// entao a child encarrega-se disso para deixar o pai fazer coisas mais importantes
 	char vm_dir[MAX_PATH_SIZE];
 	char res_dir[MAX_PATH_SIZE];
-	snprintf(res_dir, sizeof(res_dir), "/tmp/CloudIST/%s", reservation->id);
-	snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", reservation->id, vm->id);
+	if (snprintf(res_dir, sizeof(res_dir), "%s/%s", BASE_DIR, reservation->id) >= (int)sizeof(res_dir) ||
+	    snprintf(vm_dir, sizeof(vm_dir), "%s/%s/%s", BASE_DIR, reservation->id, vm->id) >= (int)sizeof(vm_dir)) {
+		fprintf(stderr, "Caminho demasiado longo para a vm %s\n", vm->id);
+		_exit(EXIT_FAILURE);
+	}
  
 	
-	// Criar pasta base /tmp/CloudIST e /tmp/CloudIST/<ID-reserva>
-	mkdir("/tmp/CloudIST", 0755);
+	// Criar pasta base /tmp/CloudIST-<ID> e /tmp/CloudIST-<ID>/<ID-reserva>
+	mkdir(BASE_DIR, 0755);
 	mkdir(res_dir, 0755);
 	// ja estava feito no copy_directory_recursive mkdir(vm_dir, 0755);
  
@@ -277,18 +280,22 @@ void spawn_vm_child(VM *vm, Reservation *reservation){
 	lim.rlim_cur = lim.rlim_max = (rlim_t)vm->type->required.disk << 30;
 	setrlimit(RLIMIT_FSIZE, &lim);
  
-	double pct = vm->type->required.cpu / vm->server->total.cpu * 100.0;
-	char pct_str[32];
-	snprintf(pct_str, sizeof(pct_str), "%d", (int)pct);   // cpulimit -l espera um inteiro
- 
-	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", pct_str,
-           "--", abs_exec, (char *)NULL);
+	double cpulimit = 100 * (vm->type->required.cpu * dc->cores_maquina)/
+			((dc->servers->total.cpu * (double)dc->num_servers));
+
+	char cpulimit_str[MAX_STRING_SIZE];
+	snprintf(cpulimit_str, sizeof(cpulimit_str), "%d", (int)cpulimit);   // cpulimit -l espera um inteiro
+
+	execlp("cpulimit", "cpulimit", "-q", "-f", "-l", cpulimit_str, "--", abs_exec, (char *)NULL);
+
  
 	perror("execlp");
 	_exit(EXIT_FAILURE);
 	// fprintf(stderr, "VM execution not implemented in base version.\n");
 	// return 0;
 }
+
+
 
 int spawn_all_vms( Reservation *res) {
 	for (size_t i = 0; i < res->num_vms; i++) {
